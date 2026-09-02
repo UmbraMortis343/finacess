@@ -1,2 +1,1289 @@
 <!DOCTYPE html>
-<html><body><h1>fas-cube alive</h1></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAS Globe — Financial Access 2004–2024</title>
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<script src="data.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; }
+  .panel {
+    position: fixed; z-index: 10; color: #e8ebf2;
+    background: rgba(12, 16, 28, 0.85); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px; padding: 10px 12px;
+    font: 12px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 320px;
+  }
+  #legend { top: 12px; left: 12px; }
+  #legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .panel button {
+    cursor: pointer; color: #fff; background: #2b3550;
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; padding: 3px 10px; font: inherit;
+  }
+  .panel button[disabled] { opacity: 0.45; cursor: default; }
+  #legend button { margin-top: 6px; }
+  #attrib { bottom: 12px; left: 12px; font-size: 11px; color: #b9c0d0; max-width: 380px; }
+  #rightCol {
+    position: fixed; top: 12px; right: 12px; z-index: 10;
+    display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+  }
+  #rightCol .panel { position: static; }
+  #leftCol {
+    position: fixed; top: 12px; left: 12px; z-index: 10;
+    display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+  }
+  #leftCol .panel { position: static; }
+  #ctl { min-width: 230px; }
+  #ctl .row { display: flex; align-items: center; gap: 8px; }
+  #ctlYear { font-size: 20px; font-weight: 700; min-width: 52px; }
+  #ctl input[type=range] { display: block; width: 100%; margin-top: 8px; accent-color: #8ec1ea; }
+  #selPanel { min-width: 230px; }
+  #selPanel .selRow { display: flex; justify-content: space-between; gap: 10px; padding: 1px 0; }
+  #selPanel .rm { cursor: pointer; color: #9aa2b5; padding: 0 4px; }
+  #selPanel .rm:hover { color: #fff; }
+  #selPanel button { margin-top: 6px; margin-right: 6px; }
+  #menu { display: none; min-width: 230px; }
+  #menuSearch {
+    width: 100%; box-sizing: border-box; background: #1a2135; color: #e8ebf2;
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; padding: 4px 8px; font: inherit;
+  }
+  #menuList { max-height: 250px; overflow-y: auto; margin-top: 6px; }
+  .mRow { padding: 2px 6px; cursor: pointer; border-radius: 4px; }
+  .mRow:hover { background: rgba(255,255,255,0.08); }
+  .mRow.on { color: #ffd867; }
+  .mRow.on::after { content: " \2713"; }
+  #tooltip {
+    position: fixed; z-index: 20; display: none; pointer-events: none;
+    background: rgba(12, 16, 28, 0.92); color: #e8ebf2; border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px; padding: 6px 9px; font: 12px/1.45 system-ui, sans-serif; max-width: 260px;
+  }
+  .warn { color: #ffd24a; }
+  .dim { color: #9aa2b5; }
+  #controlsHelp { right: 12px; bottom: 12px; display: none; }
+  #controlsHelp td { padding: 1px 10px 1px 0; white-space: nowrap; }
+  #controlsHelp td:first-child { color: #b9c0d0; }
+</style>
+</head>
+<body>
+
+<div id="leftCol">
+  <div id="legend" class="panel"></div>
+  <div id="selPanel" class="panel"></div>
+  <div id="menu" class="panel">
+    <input id="menuSearch" type="text" placeholder="Search 192 countries&hellip;" autocomplete="off">
+    <div id="menuList"></div>
+  </div>
+</div>
+<div id="attrib" class="panel">
+  <b>IMF Financial Access Survey</b> (via DBnomics), 2004–2024.<br>
+  Mobile money reporting begins ~2010 and covers roughly 80 countries —
+  a missing spike means <i>not reported</i>, never zero.<br>
+  <span class="dim">RMB&nbsp;orbit &middot; scroll&nbsp;zoom &middot; MMB/WASD&nbsp;pan &middot;
+  click&nbsp;a&nbsp;country &middot; R&nbsp;reset&nbsp;view &middot; ?&nbsp;all&nbsp;controls</span>
+</div>
+<div id="controlsHelp" class="panel">
+  <b>Controls</b>
+  <table>
+    <tr><td>Right-drag</td><td>orbit the globe</td></tr>
+    <tr><td>Scroll</td><td>zoom in/out</td></tr>
+    <tr><td>Middle-drag / WASD</td><td>pan</td></tr>
+    <tr><td>Left click</td><td>hover &middot; select &middot; scrub &middot; buttons</td></tr>
+    <tr><td>R</td><td>reset view</td></tr>
+    <tr><td>C</td><td>jump globe &harr; cube (when open)</td></tr>
+    <tr><td>M</td><td>toggle mode</td></tr>
+    <tr><td>Space</td><td>play / pause</td></tr>
+    <tr><td>&larr; / &rarr;</td><td>step year</td></tr>
+    <tr><td>Esc</td><td>close panels</td></tr>
+    <tr><td>?</td><td>toggle this overlay</td></tr>
+  </table>
+</div>
+<div id="rightCol">
+  <div id="ctl" class="panel">
+    <div class="row">
+      <span id="ctlYear">2024</span>
+      <button id="ctlPlay">Play</button>
+      <button id="ctlMode">Adoption</button>
+    </div>
+    <input id="ctlSlider" type="range" min="2004" max="2024" step="1" value="2024"
+           aria-label="Year">
+  </div>
+</div>
+<div id="tooltip"></div>
+
+<script>
+(function () {
+'use strict';
+
+var THREE = AFRAME.THREE;
+var D = window.FAS_DATA;
+if (!D) { document.body.innerHTML = '<p style="color:#fff;font-family:sans-serif;padding:2em">data.js failed to load.</p>'; return; }
+
+var Y0 = D.yearMin, Y1 = D.yearMax, NY = Y1 - Y0 + 1;
+var GLOBE_R = 0.5;
+var MAX_H = 0.35;           // spike height cap (m)
+var STUB_H = 0.004;         // reported zero still gets a visible stub — null gets nothing
+var FLOOR_PHYS = 10;        // adoption mode: per-country denominators are floored so a
+var FLOOR_ACC = 100;        // tiny absolute range (0.1→0.3) reads flat, not dramatic
+var BREAK_RATIO = 5;        // YoY change beyond 5x (either direction) = perimeter-change flag
+var BREAK_EPS = 1;          // ignore ratios computed off near-zero bases
+var COL_ATM = '#2e5da6', COL_BR = '#8ec1ea'; // physical stack: dark = ATMs, light = branches
+var COL_MM = '#ff8c42', COL_GLYPH = '#ffd24a', COL_DOT = '#9aa0ab';
+var EARTH_URL = 'https://cdn.jsdelivr.net/npm/three-globe@2/example/img/earth-blue-marble.jpg';
+var DEBUG_FLAT = /[?&]debug\b/.test(location.search);
+var PERIMETER_MSG = 'Reporting perimeter change — not organic growth.';
+
+function llToV3(lat, lon, r) {
+  var phi = (90 - lat) * Math.PI / 180;
+  var theta = (lon + 180) * Math.PI / 180;
+  return new THREE.Vector3(
+    -r * Math.sin(phi) * Math.cos(theta),
+     r * Math.cos(phi),
+     r * Math.sin(phi) * Math.sin(theta));
+}
+
+function maxOf(arr) {
+  var m = null;
+  for (var i = 0; i < arr.length; i++) if (arr[i] != null && (m == null || arr[i] > m)) m = arr[i];
+  return m;
+}
+
+// First year index where YoY change exceeds BREAK_RATIO (or its inverse); null if none.
+function firstBreak(arr) {
+  for (var i = 1; i < arr.length; i++) {
+    var p = arr[i - 1], v = arr[i];
+    if (p == null || v == null || p < BREAK_EPS) continue;
+    var r = v / p;
+    if (r > BREAK_RATIO || r < 1 / BREAK_RATIO) return i;
+  }
+  return null;
+}
+
+// Per-country precomputation.
+var C = D.countries.map(function (c) {
+  var phys = c.years.map(function (_, i) {
+    return (c.atms[i] == null && c.branches[i] == null) ? null : (c.atms[i] || 0) + (c.branches[i] || 0);
+  });
+  var pos = llToV3(c.lat, c.lon, GLOBE_R);
+  var normal = pos.clone().normalize();
+  var east = new THREE.Vector3(0, 1, 0).cross(normal);
+  if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+  east.normalize();
+  // Radius from land area (quartic root tames the 5-orders-of-magnitude spread).
+  var a025 = Math.pow(Math.max(c.area || 50, 50), 0.25);
+  var t = Math.min(1, Math.max(0, (a025 - 2.6) / 61.4));
+  return {
+    src: c, phys: phys, pos: pos, normal: normal, east: east,
+    radius: 0.003 + t * 0.008,
+    maxPhys: maxOf(phys), maxAcc: maxOf(c.mmAccounts), maxAgents: maxOf(c.mmAgents),
+    brkPhys: firstBreak(phys), brkAgents: firstBreak(c.mmAgents), brkAcc: firstBreak(c.mmAccounts)
+  };
+});
+
+// Access-mode scale: pooled 95th percentile of both per-100k measures across all
+// countries and years. Shared scale keeps physical vs mobile money comparable;
+// the Nigeria-style outliers clip against it and get a ring.
+var pooled = [];
+C.forEach(function (cc) {
+  for (var i = 0; i < NY; i++) {
+    if (cc.phys[i] != null) pooled.push(cc.phys[i]);
+    if (cc.src.mmAgents[i] != null) pooled.push(cc.src.mmAgents[i]);
+  }
+});
+pooled.sort(function (a, b) { return a - b; });
+var P95 = pooled[Math.floor(0.95 * (pooled.length - 1))];
+
+// Value + sqrt-mapped height for one spike; null when not reported.
+function heightOf(cc, kind, yi, mode) {
+  var v, denom;
+  if (kind === 'phys') {
+    v = cc.phys[yi];
+    denom = mode === 'access' ? P95 : Math.max(cc.maxPhys || 0, FLOOR_PHYS);
+  } else if (mode === 'access') {
+    v = cc.src.mmAgents[yi];
+    denom = P95;
+  } else {
+    v = cc.src.mmAccounts[yi];
+    denom = Math.max(cc.maxAcc || 0, FLOOR_ACC);
+  }
+  if (v == null) return null;
+  var norm = v / denom, clip = false;
+  if (norm > 1) { norm = 1; clip = (mode === 'access'); }
+  return { h: Math.max(Math.sqrt(norm) * MAX_H, STUB_H), clip: clip, v: v };
+}
+
+// Cube ribbon half-width (0..1), per-country normalised with the same sqrt
+// mapping as the globe. Access mode shares one denominator across both
+// measures (same unit), so the visual crossing IS the raw overtake year.
+// Adoption mode normalises per measure (different units), like the globe.
+function cubeWidth(cc, kind, yi, mode) {
+  var v, denom;
+  if (mode === 'access') {
+    v = kind === 'phys' ? cc.phys[yi] : cc.src.mmAgents[yi];
+    denom = Math.max(cc.maxPhys || 0, cc.maxAgents || 0, FLOOR_PHYS);
+  } else if (kind === 'phys') {
+    v = cc.phys[yi];
+    denom = Math.max(cc.maxPhys || 0, FLOOR_PHYS);
+  } else {
+    v = cc.src.mmAccounts[yi];
+    denom = Math.max(cc.maxAcc || 0, FLOOR_ACC);
+  }
+  if (v == null) return null;
+  return { w: Math.sqrt(Math.min(v / denom, 1)), v: v };
+}
+
+function measureLabel(kind, mode) {
+  if (kind === 'phys') return { name: 'Physical (ATMs + branches)', unit: 'per 100,000 adults' };
+  if (mode === 'access') return { name: 'Mobile money agent outlets', unit: 'per 100,000 adults' };
+  return { name: 'Registered mobile money accounts', unit: 'per 1,000 adults' };
+}
+
+function fmt(v) {
+  if (v == null) return '—';
+  return v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(1);
+}
+
+// Distance from point p to segment ab (flat scalars — no allocations in ticks).
+function distPtSeg(px, py, pz, ax, ay, az, bx, by, bz) {
+  var abx = bx - ax, aby = by - ay, abz = bz - az;
+  var t = ((px - ax) * abx + (py - ay) * aby + (pz - az) * abz) / ((abx * abx + aby * aby + abz * abz) || 1);
+  t = Math.max(0, Math.min(1, t));
+  var dx = ax + abx * t - px, dy = ay + aby * t - py, dz = az + abz * t - pz;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+// ---------- shared app state ----------
+
+var limitTimer = null;
+var menuOpen = false;
+
+// Selection lives HERE and only here — raycast clicks (flat + XR), the
+// searchable menu, and the remove buttons all write through toggleSel.
+// Year and mode changes never touch it.
+var APP = window.APP = {
+  year: Y1, mode: 'access', playing: false, viz: null, hud: null, cube: null, cam: null,
+  sel: [], hover: null, limitHit: false, cubeOpen: false,
+  setYear: function (y) {
+    this.year = Math.min(Y1, Math.max(Y0, y));
+    if (this.viz) this.viz.updateHeights();
+    if (this.hud) this.hud.refresh();
+    refreshCtl();
+  },
+  toggleMode: function () {
+    this.mode = this.mode === 'access' ? 'adoption' : 'access';
+    if (this.viz) this.viz.updateHeights();
+    if (this.cubeOpen && this.cube) this.cube.build(); // cube tracks the active mode
+    if (this.hud) this.hud.refresh();
+    renderLegend();
+    refreshCtl();
+  },
+  togglePlay: function () {
+    this.playing = !this.playing;
+    if (this.hud) this.hud.refresh();
+    refreshCtl();
+  },
+  toggleSel: function (i) {
+    var k = this.sel.indexOf(i);
+    if (k >= 0) this.sel.splice(k, 1);
+    else if (this.sel.length >= 5) {
+      this.limitHit = true;
+      renderSelPanel();
+      clearTimeout(limitTimer);
+      limitTimer = setTimeout(function () { APP.limitHit = false; renderSelPanel(); }, 2500);
+      return;
+    }
+    else this.sel.push(i);
+    if (this.viz) this.viz.updateColors();
+    if (this.cubeOpen) {
+      if (this.sel.length >= 2) { if (this.cube) this.cube.build(); }
+      else this.closeCube();
+    }
+    renderSelPanel();
+    syncMenu();
+  },
+  clearSel: function () {
+    this.sel.length = 0;
+    if (this.cubeOpen) this.closeCube();
+    if (this.viz) this.viz.updateColors();
+    renderSelPanel();
+    syncMenu();
+  },
+  openCube: function () {
+    if (this.cubeOpen || this.sel.length < 2) return;
+    this.cubeOpen = true;
+    if (this.cube) this.cube.build();
+    if (this.cam) this.cam.focusCube();
+    renderSelPanel();
+  },
+  closeCube: function () {
+    if (!this.cubeOpen) return;
+    this.cubeOpen = false;
+    if (this.cube) this.cube.clear();
+    if (this.cam) this.cam.focusGlobe();
+    renderSelPanel();
+  }
+};
+
+// Deep links: ?year=2016&mode=adoption&sel=KE,NZ (also handy for headless testing).
+var qs = new URLSearchParams(location.search);
+var qYear = parseInt(qs.get('year'), 10);
+if (qYear >= Y0 && qYear <= Y1) APP.year = qYear;
+if (qs.get('mode') === 'adoption') APP.mode = 'adoption';
+(qs.get('sel') || '').split(',').forEach(function (iso) {
+  iso = iso.trim().toUpperCase();
+  for (var i = 0; i < C.length; i++) {
+    if (C[i].src.iso2 === iso && APP.sel.length < 5 && APP.sel.indexOf(i) < 0) APP.sel.push(i);
+  }
+});
+var qCube = qs.get('cube') === '1'; // &cube=1 opens the comparison cube on load
+
+// ---------- HTML overlays ----------
+
+// Flat-mode control bar (top-right, under the country panel). The in-scene
+// scrubber stays for XR; this one is the laptop-demo path.
+function refreshCtl() {
+  document.getElementById('ctlYear').textContent = APP.year;
+  document.getElementById('ctlSlider').value = APP.year;
+  document.getElementById('ctlPlay').textContent = APP.playing ? 'Pause' : 'Play';
+  document.getElementById('ctlMode').textContent =
+    APP.mode === 'access' ? 'Adoption view' : 'Access view';
+}
+
+function renderLegend() {
+  var el = document.getElementById('legend');
+  var rows;
+  if (APP.mode === 'access') {
+    rows =
+      '<b>Access points</b><br>' +
+      '<span class="sw" style="background:' + COL_ATM + '"></span><span class="sw" style="background:' + COL_BR + '"></span>' +
+      'Physical — ATMs (dark) + bank branches (light) per 100,000 adults, stacked<br>' +
+      '<span class="sw" style="background:' + COL_MM + '"></span>Mobile money — registered agent outlets per 100,000 adults<br>' +
+      '<span class="dim">Shared scale, clipped at the 95th percentile across all countries ' +
+      'and years (ring = off-scale). Heights are &radic;-mapped.</span>';
+  } else {
+    rows =
+      '<b>Adoption</b><br>' +
+      '<span class="sw" style="background:' + COL_ATM + '"></span><span class="sw" style="background:' + COL_BR + '"></span>' +
+      'Physical — ATMs (dark) + bank branches (light) per 100,000 adults, stacked<br>' +
+      '<span class="sw" style="background:' + COL_MM + '"></span>Mobile money — registered accounts per 1,000 adults<br>' +
+      '<span class="dim">Per-country normalisation, different units — compare trajectories, ' +
+      'not heights across countries. Heights are &radic;-mapped.</span>';
+  }
+  rows += '<br><span class="warn">&#9650;</span> <span class="dim">' + PERIMETER_MSG + '</span>' +
+          '<br><button id="modeBtnHtml">Switch to ' + (APP.mode === 'access' ? 'adoption' : 'access points') + ' (M)</button>';
+  el.innerHTML = rows;
+  document.getElementById('modeBtnHtml').addEventListener('click', function () { APP.toggleMode(); });
+}
+
+var COVERAGE_TXT = { both: 'physical + mobile money', 'physical-only': 'physical only', none: 'no data reported' };
+
+function renderSelPanel() {
+  var el = document.getElementById('selPanel');
+  var h = '<b>Compare</b> <span class="dim">(' + APP.sel.length + '/5)</span><div>';
+  if (APP.sel.length) {
+    APP.sel.forEach(function (i) {
+      h += '<div class="selRow"><span>' + C[i].src.name +
+           '</span><span class="rm" data-i="' + i + '" title="Remove">&#10005;</span></div>';
+    });
+  } else {
+    h += '<span class="dim">Click a spike, or pick from the list — up to 5 countries.</span>';
+  }
+  h += '</div>';
+  if (APP.limitHit) h += '<div class="warn">Limit is 5 — remove one first.</div>';
+  h += '<button id="cubeBtn"' + (APP.sel.length < 2 && !APP.cubeOpen ? ' disabled' : '') + '>' +
+       (APP.cubeOpen ? 'Close cube' : 'Compare') + '</button>';
+  h += '<button id="menuBtn">' + (menuOpen ? 'Close list' : 'Add from list') + '</button>';
+  if (APP.sel.length) h += '<button id="selClear">Clear all</button>';
+  el.innerHTML = h;
+  document.getElementById('cubeBtn').addEventListener('click', function () {
+    if (APP.cubeOpen) APP.closeCube(); else APP.openCube();
+  });
+  document.getElementById('menuBtn').addEventListener('click', toggleMenu);
+  var clr = document.getElementById('selClear');
+  if (clr) clr.addEventListener('click', function () { APP.clearSel(); });
+  el.querySelectorAll('.rm').forEach(function (x) {
+    x.addEventListener('click', function () { APP.toggleSel(parseInt(x.dataset.i, 10)); });
+  });
+}
+
+function toggleMenu() {
+  menuOpen = !menuOpen;
+  document.getElementById('menu').style.display = menuOpen ? 'block' : 'none';
+  if (menuOpen) document.getElementById('menuSearch').focus();
+  renderSelPanel();
+}
+
+// Fallback selection path: plain scrollable, searchable HTML — no raycast
+// involved anywhere, so it cannot fail on the demo laptop.
+function buildMenu() {
+  var list = document.getElementById('menuList');
+  var h = '';
+  for (var i = 0; i < C.length; i++) {
+    var c = C[i].src;
+    var tag = c.coverage === 'both' ? '' :
+      ' <span class="dim">· ' + (c.coverage === 'none' ? 'no data' : 'phys only') + '</span>';
+    h += '<div class="mRow" data-i="' + i + '" data-name="' + c.name.toLowerCase() + '">' + c.name + tag + '</div>';
+  }
+  list.innerHTML = h;
+  list.addEventListener('click', function (e) {
+    var row = e.target.closest('.mRow');
+    if (row) APP.toggleSel(parseInt(row.dataset.i, 10));
+  });
+  document.getElementById('menuSearch').addEventListener('input', function () {
+    var q = this.value.trim().toLowerCase();
+    list.querySelectorAll('.mRow').forEach(function (r) {
+      r.style.display = !q || r.dataset.name.indexOf(q) >= 0 ? '' : 'none';
+    });
+  });
+}
+
+function syncMenu() {
+  document.querySelectorAll('#menuList .mRow').forEach(function (r) {
+    r.classList.toggle('on', APP.sel.indexOf(parseInt(r.dataset.i, 10)) >= 0);
+  });
+}
+
+// ---------- scene components ----------
+
+// Fallback globe texture: blue-grey with a subtle graticule. Shown immediately;
+// the CDN earth texture replaces it if and when it loads. Never blocks.
+function graticuleCanvas() {
+  var cv = document.createElement('canvas');
+  cv.width = 1024; cv.height = 512;
+  var x = cv.getContext('2d');
+  x.fillStyle = '#2a3350';
+  x.fillRect(0, 0, cv.width, cv.height);
+  x.strokeStyle = 'rgba(255,255,255,0.10)';
+  x.lineWidth = 1;
+  var i;
+  for (i = 0; i <= 12; i++) { // meridians every 30°
+    x.beginPath(); x.moveTo(i * cv.width / 12, 0); x.lineTo(i * cv.width / 12, cv.height); x.stroke();
+  }
+  for (i = 1; i < 6; i++) {   // parallels every 30°
+    x.strokeStyle = i === 3 ? 'rgba(255,255,255,0.20)' : 'rgba(255,255,255,0.10)';
+    x.beginPath(); x.moveTo(0, i * cv.height / 6); x.lineTo(cv.width, i * cv.height / 6); x.stroke();
+  }
+  return cv;
+}
+
+AFRAME.registerComponent('fas-viz', {
+  init: function () {
+    var group = new THREE.Group();
+
+    var fallback = new THREE.CanvasTexture(graticuleCanvas());
+    fallback.colorSpace = THREE.SRGBColorSpace;
+    this.globeMat = new THREE.MeshLambertMaterial({ map: fallback });
+    group.add(new THREE.Mesh(new THREE.SphereGeometry(GLOBE_R, 64, 48), this.globeMat));
+    var self = this;
+    new THREE.TextureLoader().load(EARTH_URL, function (tex) {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      self.globeMat.map = tex;
+      self.globeMat.needsUpdate = true;
+    }, undefined, function () { /* keep the graticule fallback */ });
+
+    // Materials are white; the real colours live per-instance so hover and
+    // selection can restyle single countries without extra entities.
+    var whiteMat = function () { return new THREE.MeshLambertMaterial({ color: '#ffffff' }); };
+    var cyl = new THREE.CylinderGeometry(1, 1, 1, 6, 1);
+    cyl.translate(0, 0.5, 0); // base at origin so scaling grows the spike outward
+    this.mPhysA = new THREE.InstancedMesh(cyl, whiteMat(), C.length);
+    this.mPhysB = new THREE.InstancedMesh(cyl, whiteMat(), C.length);
+    this.mMM = new THREE.InstancedMesh(cyl, whiteMat(), C.length);
+    // [base, hover, selected] variants per mesh.
+    var tint = function (hex) {
+      var b = new THREE.Color(hex), w = new THREE.Color('#ffffff');
+      return [b, b.clone().lerp(w, 0.4), b.clone().lerp(w, 0.75)];
+    };
+    this.colA = tint(COL_ATM); this.colB = tint(COL_BR);
+    this.colM = tint(COL_MM); this.colD = tint(COL_DOT);
+
+    var torus = new THREE.TorusGeometry(1, 0.18, 6, 24);
+    torus.rotateX(Math.PI / 2); // ring axis along the spike
+    this.mRing = new THREE.InstancedMesh(torus, new THREE.MeshBasicMaterial({ color: '#ffffff' }), C.length * 2);
+
+    var oct = new THREE.OctahedronGeometry(1, 0);
+    this.mGlyph = new THREE.InstancedMesh(oct, new THREE.MeshBasicMaterial({ color: COL_GLYPH }), C.length * 2);
+
+    // Grey dots for the coverage:"none" countries.
+    this.dotMap = [];
+    for (var i = 0; i < C.length; i++) if (C[i].src.coverage === 'none') this.dotMap.push(i);
+    this.mDots = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(1, 8, 6), whiteMat(), Math.max(this.dotMap.length, 1));
+    var m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+    for (i = 0; i < this.dotMap.length; i++) {
+      var cc = C[this.dotMap[i]];
+      var r = Math.max(cc.radius, 0.004);
+      s.set(r, r, r);
+      m4.compose(cc.pos, q, s);
+      this.mDots.setMatrixAt(i, m4);
+    }
+    this.mDots.count = this.dotMap.length;
+    this.mDots.instanceMatrix.needsUpdate = true;
+
+    var meshes = [this.mPhysA, this.mPhysB, this.mMM, this.mRing, this.mGlyph, this.mDots];
+    meshes.forEach(function (m) {
+      m.frustumCulled = false;
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      group.add(m);
+    });
+
+    this.el.setObject3D('viz', group);
+    this.glyphMap = [];
+    this._tmp = { m4: new THREE.Matrix4(), q: new THREE.Quaternion(), s: new THREE.Vector3(),
+                  p: new THREE.Vector3(), p2: new THREE.Vector3(), Y: new THREE.Vector3(0, 1, 0) };
+    APP.viz = this;
+    this.updateHeights();
+    this.updateColors();
+
+    // XR selection: laser-controls' cursor emits 'click' on this entity
+    // (it is .clickable); the intersection carries the instanceId.
+    var vizSelf = this;
+    this.el.addEventListener('click', function (e) {
+      var it = e.detail && e.detail.intersection;
+      if (!it) return;
+      var ci = vizSelf.countryFromObject(it.object, it.instanceId);
+      if (ci != null) APP.toggleSel(ci);
+    });
+  },
+
+  countryFromObject: function (o, id) {
+    if (o === this.mPhysA || o === this.mPhysB || o === this.mMM) return id;
+    if (o === this.mGlyph) { var g = this.glyphMap[id]; return g ? g.i : null; }
+    if (o === this.mDots) return this.dotMap[id];
+    return null;
+  },
+
+  // Hover + selection restyle by mutating instance colours in place.
+  updateColors: function () {
+    var sel = APP.sel, hov = APP.hover;
+    for (var i = 0; i < C.length; i++) {
+      var st = sel.indexOf(i) >= 0 ? 2 : (i === hov ? 1 : 0);
+      this.mPhysA.setColorAt(i, this.colA[st]);
+      this.mPhysB.setColorAt(i, this.colB[st]);
+      this.mMM.setColorAt(i, this.colM[st]);
+    }
+    for (var j = 0; j < this.dotMap.length; j++) {
+      var ci = this.dotMap[j];
+      this.mDots.setColorAt(j, this.colD[sel.indexOf(ci) >= 0 ? 2 : (ci === hov ? 1 : 0)]);
+    }
+    this.mPhysA.instanceColor.needsUpdate = true;
+    this.mPhysB.instanceColor.needsUpdate = true;
+    this.mMM.instanceColor.needsUpdate = true;
+    if (this.mDots.instanceColor) this.mDots.instanceColor.needsUpdate = true;
+  },
+
+  // Year/mode changes mutate instance matrices in place — no scene-graph churn.
+  updateHeights: function () {
+    var yi = APP.year - Y0, mode = APP.mode;
+    var t = this._tmp, self = this;
+    var ri = 0, gi = 0;
+    this.glyphMap.length = 0;
+    var hide = function (mesh, i) {
+      t.s.set(0, 0, 0); t.m4.compose(t.p, t.q, t.s); mesh.setMatrixAt(i, t.m4);
+    };
+    var ring = function (cc, h) {
+      t.p2.copy(t.p).addScaledVector(cc.normal, h);
+      t.s.set(cc.radius * 2, cc.radius * 2, cc.radius * 2);
+      t.m4.compose(t.p2, t.q, t.s);
+      self.mRing.setMatrixAt(ri++, t.m4);
+    };
+    var glyph = function (cc, i, kind, h) {
+      t.p2.copy(t.p).addScaledVector(cc.normal, h + 0.022);
+      t.s.set(0.009, 0.013, 0.009);
+      t.m4.compose(t.p2, t.q, t.s);
+      self.mGlyph.setMatrixAt(gi, t.m4);
+      self.glyphMap[gi++] = { i: i, kind: kind };
+    };
+    for (var i = 0; i < C.length; i++) {
+      var cc = C[i], c = cc.src;
+      t.q.setFromUnitVectors(t.Y, cc.normal);
+
+      // Physical: one sqrt-scaled total split dark/light blue by the raw
+      // ATMs : branches ratio — same unit, so the stack is a true stack.
+      t.p.copy(cc.pos)
+        .addScaledVector(cc.east, -1.25 * cc.radius)
+        .addScaledVector(cc.normal, -0.003); // sink the base slightly into the surface
+      var res = heightOf(cc, 'phys', yi, mode);
+      if (!res) { hide(this.mPhysA, i); hide(this.mPhysB, i); }
+      else {
+        var vA = c.atms[yi] || 0, vB = c.branches[yi] || 0, tot = vA + vB;
+        var shareA = tot > 0 ? vA / tot
+                   : (c.branches[yi] == null ? 1 : c.atms[yi] == null ? 0 : 0.5);
+        var hA = res.h * shareA, hB = res.h - hA;
+        if (hA > 0) {
+          t.s.set(cc.radius, hA + 0.003, cc.radius);
+          t.m4.compose(t.p, t.q, t.s);
+          this.mPhysA.setMatrixAt(i, t.m4);
+        } else hide(this.mPhysA, i);
+        if (hB > 0) {
+          t.p2.copy(t.p).addScaledVector(cc.normal, hA + 0.003);
+          t.s.set(cc.radius, hB, cc.radius);
+          t.m4.compose(t.p2, t.q, t.s);
+          this.mPhysB.setMatrixAt(i, t.m4);
+        } else hide(this.mPhysB, i);
+        if (res.clip) ring(cc, res.h);
+        if (cc.brkPhys != null && yi >= cc.brkPhys) glyph(cc, i, 'phys', res.h);
+      }
+
+      // Mobile money: single orange bar, measure per mode (unchanged).
+      t.p.copy(cc.pos)
+        .addScaledVector(cc.east, 1.25 * cc.radius)
+        .addScaledVector(cc.normal, -0.003);
+      res = heightOf(cc, 'mm', yi, mode);
+      if (!res) { hide(this.mMM, i); }
+      else {
+        t.s.set(cc.radius, res.h + 0.003, cc.radius);
+        t.m4.compose(t.p, t.q, t.s);
+        this.mMM.setMatrixAt(i, t.m4);
+        if (res.clip) ring(cc, res.h);
+        var fb = mode === 'access' ? cc.brkAgents : cc.brkAcc;
+        if (fb != null && yi >= fb) glyph(cc, i, 'mm', res.h);
+      }
+    }
+    this.mRing.count = ri;
+    this.mGlyph.count = gi;
+    this.mPhysA.instanceMatrix.needsUpdate = true;
+    this.mPhysB.instanceMatrix.needsUpdate = true;
+    this.mMM.instanceMatrix.needsUpdate = true;
+    this.mRing.instanceMatrix.needsUpdate = true;
+    this.mGlyph.instanceMatrix.needsUpdate = true;
+  }
+});
+
+AFRAME.registerComponent('hud-controller', {
+  init: function () {
+    this.acc = 0;
+    this._v1 = new THREE.Vector3();
+    this._v2 = new THREE.Vector3();
+    this._v3 = new THREE.Vector3();
+    this._v4 = new THREE.Vector3();
+    APP.hud = this;
+    this.refresh();
+    // In-headset clicks (laser-controls cursor) — desktop uses pointer-input instead.
+    document.getElementById('playBtn').addEventListener('click', function () { APP.togglePlay(); });
+    document.getElementById('modeBtn').addEventListener('click', function () { APP.toggleMode(); });
+  },
+  refresh: function () {
+    document.getElementById('yearText').setAttribute('value', String(APP.year));
+    document.getElementById('playText').setAttribute('value', APP.playing ? 'PAUSE' : 'PLAY');
+    document.getElementById('modeText').setAttribute('value',
+      APP.mode === 'access' ? 'MODE: ACCESS POINTS' : 'MODE: ADOPTION');
+    var handle = document.getElementById('handle');
+    if (handle.object3D) handle.object3D.position.x = -0.5 + (APP.year - Y0) / (NY - 1);
+  },
+  tick: function (time, dt) {
+    var cam = this.el.sceneEl.camera;
+    if (cam) {
+      // Follow the viewer around the globe: sit 1m out from the globe centre
+      // on the camera's side, below the equator, always facing the camera —
+      // never occluded no matter where the user (or headset wearer) walks.
+      cam.getWorldPosition(this._v1);
+      document.getElementById('viz').object3D.getWorldPosition(this._v2);
+      this._v3.copy(this._v1).sub(this._v2);
+      this._v3.y = 0;
+      if (this._v3.lengthSq() < 1e-4) this._v3.set(0, 0, 1);
+      this._v3.normalize();
+      this._v3.multiplyScalar(1.0).add(this._v2);
+      this._v3.y = this._v2.y - 0.58;
+      // With the cube open, dodge out of the camera→cube sightline so the
+      // scrubber never floats between the user and the cube.
+      if (APP.cubeOpen && APP.cube) {
+        APP.cube.el.object3D.getWorldPosition(this._v4);
+        this._v4.y = 1.1;
+        if (distPtSeg(this._v3.x, this._v3.y, this._v3.z,
+                      this._v1.x, this._v1.y, this._v1.z,
+                      this._v4.x, this._v4.y, this._v4.z) < 1.25) { // HUD spans ~±1.1m
+          var dx = this._v3.x - this._v2.x, dz = this._v3.z - this._v2.z, best = -1, bx = 0, bz = 0;
+          [0.95, -0.95].forEach(function (ang) {
+            var ca = Math.cos(ang), sa = Math.sin(ang);
+            var nx = this._v2.x + dx * ca - dz * sa, nz = this._v2.z + dx * sa + dz * ca;
+            var dd = distPtSeg(nx, this._v3.y, nz,
+                               this._v1.x, this._v1.y, this._v1.z,
+                               this._v4.x, this._v4.y, this._v4.z);
+            if (dd > best) { best = dd; bx = nx; bz = nz; }
+          }, this);
+          this._v3.x = bx; this._v3.z = bz;
+        }
+      }
+      this.el.parentEl.object3D.worldToLocal(this._v3);
+      this.el.object3D.position.lerp(this._v3, 0.18);
+      this.el.object3D.lookAt(this._v1); // camera-facing billboard
+    }
+    if (APP.playing && dt) {
+      this.acc += dt;
+      var step = 1000 / 1.5; // ~1.5 years per second
+      while (this.acc > step) {
+        this.acc -= step;
+        APP.setYear(APP.year >= Y1 ? Y0 : APP.year + 1);
+      }
+    }
+  }
+});
+
+// Drill-down space-time cube: selected countries along X, time vertical
+// (2004 at the floor, 2024 at 2.2m). Two ribbons per country whose width uses
+// the same sqrt mapping as the globe spikes. Rebuilt only on open / selection /
+// mode change — never per frame.
+AFRAME.registerComponent('cube-viz', {
+  init: function () {
+    APP.cube = this;
+    this.built = false;
+    this.labels = [];  // billboarded (country names, close button)
+    this.still = [];   // static, front-facing (key, year tags)
+    this.closeEl = null;
+    this._w = new THREE.Vector3();
+    this._c = new THREE.Vector3();
+    if (qCube && APP.sel.length >= 2) setTimeout(function () { APP.openCube(); }, 0);
+  },
+
+  clear: function () {
+    if (!this.built) return;
+    this.el.removeObject3D('cube');
+    var drop = function (l) { if (l.parentNode) l.parentNode.removeChild(l); };
+    this.labels.forEach(drop);
+    this.still.forEach(drop);
+    this.labels.length = 0;
+    this.still.length = 0;
+    this.closeEl = null;
+    this.built = false;
+  },
+
+  addLabel: function (value, x, y, z, color, width, wrap) {
+    var el = document.createElement('a-entity');
+    el.setAttribute('text', 'value: ' + value + '; align: center; color: ' + color +
+      '; width: ' + width + '; wrapCount: ' + wrap);
+    el.setAttribute('position', x + ' ' + y + ' ' + z);
+    this.el.appendChild(el);
+    this.labels.push(el);
+    return el;
+  },
+
+  // Static front-facing text (key rows, year tags) — aligned with flat swatch
+  // meshes, so it must not billboard.
+  addStill: function (value, x, y, z, color, width, wrap) {
+    var el = document.createElement('a-entity');
+    el.setAttribute('text', 'value: ' + value + '; align: left; anchor: left; color: ' + color +
+      '; width: ' + width + '; wrapCount: ' + wrap);
+    el.setAttribute('position', x + ' ' + y + ' ' + z);
+    this.el.appendChild(el);
+    this.still.push(el);
+    return el;
+  },
+
+  build: function () {
+    this.clear();
+    var mode = APP.mode, N = APP.sel.length;
+    if (N < 2) return;
+    var self = this;
+    var group = new THREE.Group();
+    // Two lanes per column, side by side in the same plane: physical left, mm right.
+    var SP = 0.55, RW = 0.10, LX = 0.115, H = 2.2;
+    var yOf = function (yi) { return yi / (NY - 1) * H; };
+    var x0 = -(N - 1) / 2 * SP;
+    var bufs = { dark: { pos: [], idx: [] }, light: { pos: [], idx: [] },
+                 mm: { pos: [], idx: [] }, warn: { pos: [], idx: [] } };
+    // pts: [{y, xl, xr}] for one gap-free run; an isolated year becomes a thin bar.
+    var pushStrip = function (buf, pts, z) {
+      if (!pts.length) return;
+      if (pts.length === 1) {
+        var p = pts[0];
+        pts = [{ y: Math.max(p.y - 0.02, 0), xl: p.xl, xr: p.xr },
+               { y: p.y + 0.02, xl: p.xl, xr: p.xr }];
+      }
+      var base = buf.pos.length / 3;
+      for (var j = 0; j < pts.length; j++) buf.pos.push(pts[j].xl, pts[j].y, z, pts[j].xr, pts[j].y, z);
+      for (j = 0; j < pts.length - 1; j++) {
+        var a = base + 2 * j;
+        buf.idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      }
+    };
+    APP.sel.forEach(function (si, k) {
+      var cc = C[si], c = cc.src, xi = x0 + k * SP;
+      var xp = xi - LX, xm = xi + LX; // lane centres: physical, mobile money
+      var segP = [], segM = [], curP = null, curM = null, yi, w;
+      for (yi = 0; yi < NY; yi++) {
+        var rP = cubeWidth(cc, 'phys', yi, mode);
+        var rM = cubeWidth(cc, 'mm', yi, mode);
+        if (rP) { // physical ribbon keeps the globe's dark/light ATMs:branches split
+          w = Math.max(rP.w * RW, 0.005);
+          var vA = c.atms[yi] || 0, vB = c.branches[yi] || 0, tot = vA + vB;
+          var shareA = tot > 0 ? vA / tot : (c.branches[yi] == null ? 1 : c.atms[yi] == null ? 0 : 0.5);
+          if (!curP) { curP = { d: [], l: [] }; segP.push(curP); }
+          var xs = xp - w + 2 * w * shareA;
+          curP.d.push({ y: yOf(yi), xl: xp - w, xr: xs });
+          curP.l.push({ y: yOf(yi), xl: xs, xr: xp + w });
+        } else curP = null; // null year = gap, never zero
+        if (rM) {
+          w = Math.max(rM.w * RW, 0.005);
+          if (!curM) { curM = []; segM.push(curM); }
+          curM.push({ y: yOf(yi), xl: xm - w, xr: xm + w });
+        } else curM = null;
+      }
+      segP.forEach(function (s) { pushStrip(bufs.dark, s.d, 0); pushStrip(bufs.light, s.l, 0); });
+      segM.forEach(function (s) { pushStrip(bufs.mm, s, 0); });
+
+      // The payload: first comparable year where the mobile money ribbon is
+      // wider than the physical one — flat gold diamond + year tag, in front
+      // of the ribbon plane so it never sinks into the geometry.
+      for (yi = 0; yi < NY; yi++) {
+        var p2 = cubeWidth(cc, 'phys', yi, mode), m2 = cubeWidth(cc, 'mm', yi, mode);
+        if (p2 && m2 && m2.w > p2.w) {
+          var dia = new THREE.Mesh(new THREE.PlaneGeometry(0.045, 0.045),
+            new THREE.MeshBasicMaterial({ color: '#ffd867', side: THREE.DoubleSide }));
+          dia.rotation.z = Math.PI / 4;
+          dia.position.set(xi, yOf(yi), 0.03);
+          group.add(dia);
+          self.addStill(String(Y0 + yi), xi + 0.055, yOf(yi), 0.03, '#ffd867', 0.55, 12);
+          break;
+        }
+      }
+
+      // structural-break years: yellow line across the affected ribbon lane
+      var warnLine = function (cx, byi) {
+        var y = yOf(byi);
+        pushStrip(bufs.warn, [{ y: y - 0.005, xl: cx - RW - 0.015, xr: cx + RW + 0.015 },
+                              { y: y + 0.005, xl: cx - RW - 0.015, xr: cx + RW + 0.015 }], 0.012);
+      };
+      if (cc.brkPhys != null && cubeWidth(cc, 'phys', cc.brkPhys, mode)) warnLine(xp, cc.brkPhys);
+      var fbm = mode === 'access' ? cc.brkAgents : cc.brkAcc;
+      if (fbm != null && cubeWidth(cc, 'mm', fbm, mode)) warnLine(xm, fbm);
+
+      // column base name
+      self.addLabel(c.name, xi, 0.06, 0.3, '#e8ebf2', 0.85, 22);
+    });
+
+    var mats = {
+      dark: new THREE.MeshLambertMaterial({ color: COL_ATM, side: THREE.DoubleSide }),
+      light: new THREE.MeshLambertMaterial({ color: COL_BR, side: THREE.DoubleSide }),
+      mm: new THREE.MeshLambertMaterial({ color: COL_MM, side: THREE.DoubleSide }),
+      warn: new THREE.MeshBasicMaterial({ color: COL_GLYPH, side: THREE.DoubleSide })
+    };
+    Object.keys(bufs).forEach(function (kk) {
+      var b = bufs[kk];
+      if (!b.idx.length) return;
+      var g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(b.pos, 3));
+      g.setIndex(b.idx);
+      g.computeVertexNormals();
+      group.add(new THREE.Mesh(g, mats[kk]));
+    });
+
+    // year gridlines + labels
+    var gl = [], xa = x0 - 0.35, xb = x0 + (N - 1) * SP + 0.35;
+    [2004, 2010, 2015, 2020, 2024].forEach(function (yr) {
+      var y = yOf(yr - Y0);
+      gl.push(xa, y, 0, xb, y, 0);
+      self.addLabel(String(yr), xa - 0.15, y, 0, '#8b93a7', 0.5, 10);
+    });
+    var lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(gl, 3));
+    group.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: '#46516b' })));
+
+    // key: swatches + meanings, on the side of the cube
+    var xk = xb + 0.22;
+    self.addStill('KEY', xk, 1.52, 0, '#e8ebf2', 0.6, 12);
+    [
+      { c: COL_ATM, s: 'quad', t: 'ATMs' },
+      { c: COL_BR, s: 'quad', t: 'bank branches' },
+      { c: COL_MM, s: 'quad', t: mode === 'access' ? 'mobile money agent outlets' : 'mobile money accounts' },
+      { c: '#ffd867', s: 'diamond', t: 'year mobile money overtakes physical' },
+      { c: COL_GLYPH, s: 'bar', t: 'reporting break — not organic growth' },
+      { s: 'none', t: 'gap in ribbon = not reported' }
+    ].forEach(function (r, j) {
+      var y = 1.4 - j * 0.11;
+      if (r.s !== 'none') {
+        var geo = r.s === 'bar' ? new THREE.PlaneGeometry(0.08, 0.012)
+                : r.s === 'diamond' ? new THREE.PlaneGeometry(0.04, 0.04)
+                : new THREE.PlaneGeometry(0.05, 0.032);
+        var sw = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: r.c, side: THREE.DoubleSide }));
+        if (r.s === 'diamond') sw.rotation.z = Math.PI / 4;
+        sw.position.set(xk + 0.02, y, 0);
+        group.add(sw);
+      }
+      self.addStill(r.t, xk + 0.09, y, 0, '#b9c0d0', 0.85, 30);
+    });
+
+    // title + scaling note so the cube is self-explanatory
+    var xc = (xa + xb) / 2;
+    self.addLabel(mode === 'access' ? 'ACCESS POINTS 2004-2024' : 'ADOPTION 2004-2024',
+      xc, H + 0.18, 0, '#e8ebf2', 1.3, 30);
+    self.addLabel(mode === 'access'
+      ? 'ribbon width = share of country peak (same per-100k scale for both ribbons)'
+      : 'ribbon width = share of country peak per measure (different units)',
+      xc, H + 0.09, 0, '#8b93a7', 1.5, 80);
+
+    this.el.setObject3D('cube', group);
+
+    // in-scene close button — the XR path; flat mode raycasts it too
+    var btn = document.createElement('a-plane');
+    btn.setAttribute('width', '0.34');
+    btn.setAttribute('height', '0.1');
+    btn.setAttribute('color', '#2b3550');
+    btn.setAttribute('class', 'clickable');
+    btn.setAttribute('position', (xb + 0.35) + ' 1.7 0');
+    btn.setAttribute('text', 'value: CLOSE; align: center; color: #ffffff; width: 0.9; wrapCount: 16; zOffset: 0.01');
+    btn.addEventListener('click', function () { APP.closeCube(); });
+    this.el.appendChild(btn);
+    this.labels.push(btn); // billboarded like the text labels
+    this.closeEl = btn;
+
+    this.built = true;
+  },
+
+  tick: function (time) {
+    if (!this.built) return;
+    var cam = this.el.sceneEl.camera;
+    if (!cam) return;
+    cam.getWorldPosition(this._c);
+    for (var i = 0; i < this.labels.length; i++) { // camera-facing labels
+      var o = this.labels[i].object3D;
+      if (!o) continue;
+      o.getWorldPosition(this._w);
+      o.lookAt(this._c.x, this._w.y, this._c.z);
+    }
+  }
+});
+
+// Flat-mode camera: orbit (RMB) / dolly (wheel) / pan (MMB or WASD) around the
+// globe. LMB never moves the camera — it belongs to pointer-input. Inactive
+// while an XR session runs: the headset drives the camera there.
+AFRAME.registerComponent('orbit-cam', {
+  init: function () {
+    this.DEF = { yaw: 0, pitch: 0.12, dist: 2.6 };
+    this.defTarget = new THREE.Vector3(0, 1.2, -2); // globe centre
+    this.target = this.defTarget.clone();
+    this.yaw = this.DEF.yaw; this.pitch = this.DEF.pitch; this.dist = this.DEF.dist;
+    this.focus = 'globe';
+    this.dragMode = null;
+    this.last = { x: 0, y: 0 };
+    this.keys = {};
+    this._m = new THREE.Matrix4();
+    this._p = new THREE.Vector3();
+    this._up = new THREE.Vector3(0, 1, 0);
+    APP.cam = this;
+
+    var self = this, scene = this.el.sceneEl;
+    scene.addEventListener('loaded', function () {
+      var cv = scene.canvas;
+      cv.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+      cv.addEventListener('pointerdown', function (e) {
+        if (e.button === 2) self.dragMode = 'orbit';
+        else if (e.button === 1) { self.dragMode = 'pan'; e.preventDefault(); }
+        else return;
+        self.last.x = e.clientX; self.last.y = e.clientY;
+        if (cv.setPointerCapture) cv.setPointerCapture(e.pointerId);
+      });
+      window.addEventListener('pointermove', function (e) {
+        if (!self.dragMode) return;
+        var dx = e.clientX - self.last.x, dy = e.clientY - self.last.y;
+        self.last.x = e.clientX; self.last.y = e.clientY;
+        if (self.dragMode === 'orbit') {
+          self.yaw -= dx * 0.005;
+          self.pitch = Math.min(1.35, Math.max(-1.35, self.pitch + dy * 0.005));
+        } else {
+          self.panBy(dx, dy);
+        }
+      });
+      window.addEventListener('pointerup', function (e) {
+        if (e.button === 1 || e.button === 2) self.dragMode = null;
+      });
+      // Dolly, clamped: never inside the sphere, never lost in the distance.
+      cv.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        self.dist = Math.min(6, Math.max(1.0, self.dist * Math.exp(e.deltaY * 0.0012)));
+      }, { passive: false });
+    });
+    window.addEventListener('keydown', function (e) {
+      if (e.target && e.target.tagName === 'INPUT') return;
+      self.keys[e.code] = true;
+    });
+    window.addEventListener('keyup', function (e) { self.keys[e.code] = false; });
+    window.addEventListener('blur', function () { self.keys = {}; });
+
+    // Entering XR: zero the rig so the headset pose starts clean (same trick
+    // look-controls uses). On exit the next tick restores the orbit pose.
+    scene.addEventListener('enter-vr', function () {
+      self.el.object3D.position.set(0, 0, 0);
+      self.el.object3D.quaternion.identity();
+    });
+  },
+
+  panBy: function (dx, dy) {
+    var o = this.el.object3D, s = this.dist * 0.0012;
+    this._p.setFromMatrixColumn(o.matrix, 0);            // camera right
+    this.target.addScaledVector(this._p, -dx * s);
+    this._p.setFromMatrixColumn(o.matrix, 1);            // camera up
+    this.target.addScaledVector(this._p, dy * s);
+    this.clampTarget();
+  },
+
+  clampTarget: function () {
+    // Light guard against wandering off; R always brings you home.
+    this._p.copy(this.target).sub(this.defTarget);
+    if (this._p.length() > 5) this.target.copy(this.defTarget).addScaledVector(this._p.normalize(), 5);
+  },
+
+  reset: function () { this.focusGlobe(); },
+
+  focusGlobe: function () {
+    this.yaw = this.DEF.yaw; this.pitch = this.DEF.pitch; this.dist = this.DEF.dist;
+    this.target.copy(this.defTarget);
+    this.focus = 'globe';
+  },
+
+  focusCube: function () {
+    this.yaw = 0; this.pitch = 0.05; this.dist = 2.9;
+    this.target.set(1.5, 1.1, -2.5); // cube centre (world)
+    this.focus = 'cube';
+  },
+
+  tick: function (time, dt) {
+    if (this.el.sceneEl.is('vr-mode')) return;
+    if (dt) {
+      var sp = 1.4 * dt / 1000;
+      var fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw); // horizontal forward
+      var k = this.keys;
+      if (k.KeyW) { this.target.x += fx * sp; this.target.z += fz * sp; }
+      if (k.KeyS) { this.target.x -= fx * sp; this.target.z -= fz * sp; }
+      if (k.KeyD) { this.target.x += -fz * sp; this.target.z += fx * sp; }
+      if (k.KeyA) { this.target.x -= -fz * sp; this.target.z -= fx * sp; }
+      if (k.KeyW || k.KeyA || k.KeyS || k.KeyD) this.clampTarget();
+    }
+    var cp = Math.cos(this.pitch);
+    this._p.set(
+      this.target.x + this.dist * cp * Math.sin(this.yaw),
+      this.target.y + this.dist * Math.sin(this.pitch),
+      this.target.z + this.dist * cp * Math.cos(this.yaw));
+    var o = this.el.object3D;
+    o.position.copy(this._p);
+    this._m.lookAt(this._p, this.target, this._up); // -Z toward target (camera convention)
+    o.quaternion.setFromRotationMatrix(this._m);
+  }
+});
+
+// Desktop mouse interaction: hover tooltips, click-select, scrubber drag,
+// button clicks. Raycasts THREE meshes directly (A-Frame's raycaster can't
+// address InstancedMesh instances). LMB only — the camera never listens to it.
+AFRAME.registerComponent('pointer-input', {
+  init: function () {
+    this.raycaster = new THREE.Raycaster();
+    this.ndc = new THREE.Vector2();
+    this.dragging = false;
+    this.ui = null;
+    var self = this;
+    this.el.addEventListener('loaded', function () {
+      var cv = self.el.canvas;
+      cv.addEventListener('pointerdown', self.onDown.bind(self));
+      cv.addEventListener('pointermove', self.onMove.bind(self));
+      window.addEventListener('pointerup', self.onUp.bind(self));
+    });
+  },
+
+  uiMeshes: function () {
+    if (this.ui) return this.ui;
+    var grab = function (id) {
+      var el = document.getElementById(id);
+      return el && el.getObject3D('mesh');
+    };
+    var u = { handle: grab('handle'), track: grab('track'), play: grab('playBtn'),
+              mode: grab('modeBtn'), drag: grab('dragPlane') };
+    if (u.handle && u.track && u.play && u.mode && u.drag) this.ui = u;
+    return u;
+  },
+
+  cast: function (e, objects) {
+    var cv = this.el.canvas, rect = cv.getBoundingClientRect();
+    this.ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1,
+                 -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.ndc, this.el.camera);
+    return this.raycaster.intersectObjects(objects.filter(Boolean), false);
+  },
+
+  hitTargets: function () {
+    var viz = APP.viz, u = this.uiMeshes();
+    if (!viz) return [];
+    var t = [viz.mPhysA, viz.mPhysB, viz.mMM, viz.mGlyph, viz.mDots, u.handle, u.track, u.play, u.mode];
+    if (APP.cubeOpen && APP.cube && APP.cube.closeEl) t.push(APP.cube.closeEl.getObject3D('mesh'));
+    return t;
+  },
+
+  describe: function (hit) {
+    var viz = APP.viz, u = this.uiMeshes(), o = hit.object;
+    if (o === u.handle || o === u.track) return { type: 'scrub', point: hit.point };
+    if (o === u.play) return { type: 'play' };
+    if (o === u.mode) return { type: 'mode' };
+    if (o === viz.mPhysA || o === viz.mPhysB) return { type: 'spike', ci: hit.instanceId, kind: 'phys' };
+    if (o === viz.mMM) return { type: 'spike', ci: hit.instanceId, kind: 'mm' };
+    if (o === viz.mGlyph) {
+      var g = viz.glyphMap[hit.instanceId];
+      return g ? { type: 'glyph', ci: g.i, kind: g.kind } : null;
+    }
+    if (o === viz.mDots) return { type: 'dot', ci: viz.dotMap[hit.instanceId] };
+    if (APP.cube && APP.cube.closeEl && o === APP.cube.closeEl.getObject3D('mesh')) return { type: 'cubeClose' };
+    return null;
+  },
+
+  yearFromPoint: function (worldPoint) {
+    var hud = document.getElementById('hud').object3D;
+    var local = hud.worldToLocal(worldPoint.clone());
+    var t = Math.min(1, Math.max(0, local.x + 0.5));
+    APP.setYear(Y0 + Math.round(t * (NY - 1)));
+  },
+
+  onDown: function (e) {
+    if (e.button !== 0) return; // LMB is interaction-only; RMB/MMB belong to orbit-cam
+    var hits = this.cast(e, this.hitTargets());
+    if (!hits.length) return;
+    var d = this.describe(hits[0]);
+    if (!d) return;
+    if (d.type === 'scrub') { this.dragging = true; this.yearFromPoint(d.point); }
+    else if (d.type === 'play') APP.togglePlay();
+    else if (d.type === 'mode') APP.toggleMode();
+    else if (d.type === 'cubeClose') APP.closeCube();
+    else APP.toggleSel(d.ci);
+  },
+
+  onUp: function () {
+    this.dragging = false;
+  },
+
+  onMove: function (e) {
+    var tip = document.getElementById('tooltip');
+    if (this.dragging) {
+      var u = this.uiMeshes();
+      var hits = u.drag ? this.cast(e, [u.drag]) : [];
+      if (hits.length) this.yearFromPoint(hits[0].point);
+      return;
+    }
+    var all = this.cast(e, this.hitTargets());
+    var d = all.length ? this.describe(all[0]) : null;
+    this.el.canvas.style.cursor = d ? 'pointer' : '';
+
+    // Hover highlight: restyle the hovered country's instances.
+    var isCountry = d && (d.type === 'spike' || d.type === 'glyph' || d.type === 'dot');
+    var newHover = isCountry ? d.ci : null;
+    if (newHover !== APP.hover) {
+      APP.hover = newHover;
+      if (APP.viz) APP.viz.updateColors();
+    }
+
+    if (!isCountry) { tip.style.display = 'none'; return; }
+
+    var cc = C[d.ci], c = cc.src, yi = APP.year - Y0;
+    var selState = APP.sel.indexOf(d.ci) >= 0 ? '&#10003; selected — click to remove'
+                 : APP.sel.length >= 5 ? 'selection full (5/5)' : 'click to select';
+    var html = '<b>' + c.name + '</b> <span class="dim">' + APP.year + '</span>';
+    if (d.type === 'dot') {
+      html += '<br><span class="dim">No data reported 2004–2024</span>';
+    } else {
+      var mmLbl = APP.mode === 'access' ? 'MM agents /100k' : 'MM accounts /1,000';
+      var mmv = APP.mode === 'access' ? c.mmAgents[yi] : c.mmAccounts[yi];
+      html += '<br>Physical /100k: ' + fmt(cc.phys[yi]) +
+              ' <span class="dim">(ATMs ' + fmt(c.atms[yi]) + ' &middot; branches ' + fmt(c.branches[yi]) + ')</span>' +
+              '<br>' + mmLbl + ': ' + fmt(mmv);
+      var res = heightOf(cc, d.kind, yi, APP.mode);
+      if (res && res.clip) html += '<br><span class="dim">Above the 95th-percentile scale — clipped (ring).</span>';
+      var fb = d.kind === 'phys' ? cc.brkPhys : (APP.mode === 'access' ? cc.brkAgents : cc.brkAcc);
+      if (d.type === 'glyph' || (fb != null && yi >= fb)) {
+        html += '<br><span class="warn">&#9650; ' + PERIMETER_MSG + '</span>';
+      }
+    }
+    html += '<br><span class="dim">Data: ' + COVERAGE_TXT[c.coverage] + ' &middot; ' + selState + '</span>';
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    tip.style.left = (e.clientX + 14) + 'px';
+    tip.style.top = (e.clientY + 12) + 'px';
+  }
+});
+
+// ?debug forces flat mode; XR entry stays available otherwise but nothing waits on it.
+AFRAME.registerComponent('app-config', {
+  init: function () {
+    if (DEBUG_FLAT) {
+      this.el.setAttribute('vr-mode-ui', 'enabled', false);
+      this.el.removeAttribute('ar-hit-test');
+    }
+  }
+});
+
+// Keyboard shortcuts (flat mode). Inert while typing in the search box.
+window.addEventListener('keydown', function (e) {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); APP.togglePlay(); }
+  else if (e.key === 'm' || e.key === 'M') APP.toggleMode();
+  else if (e.key === 'r' || e.key === 'R') { if (APP.cam) APP.cam.reset(); }
+  else if (e.key === 'c' || e.key === 'C') {
+    if (APP.cubeOpen && APP.cam) {
+      if (APP.cam.focus === 'cube') APP.cam.focusGlobe(); else APP.cam.focusCube();
+    }
+  }
+  else if (e.key === '?') {
+    var help = document.getElementById('controlsHelp');
+    help.style.display = help.style.display === 'block' ? 'none' : 'block';
+  }
+  else if (e.key === 'ArrowLeft') APP.setYear(APP.year - 1);
+  else if (e.key === 'ArrowRight') APP.setYear(APP.year + 1);
+  else if (e.key === 'Escape') {
+    if (menuOpen) toggleMenu();
+    document.getElementById('controlsHelp').style.display = 'none';
+  }
+});
+
+document.getElementById('ctlSlider').addEventListener('input', function () {
+  APP.setYear(parseInt(this.value, 10));
+});
+document.getElementById('ctlPlay').addEventListener('click', function () { APP.togglePlay(); });
+document.getElementById('ctlMode').addEventListener('click', function () { APP.toggleMode(); });
+
+renderLegend();
+refreshCtl();
+buildMenu();
+renderSelPanel();
+})();
+</script>
+
+<a-scene background="color: #0d1020"
+         renderer="antialias: true; colorManagement: true"
+         webxr="optionalFeatures: hit-test, local-floor"
+         ar-hit-test="target: #root"
+         device-orientation-permission-ui="enabled: false"
+         app-config pointer-input>
+
+  <a-entity light="type: hemisphere; color: #dbe6ff; groundColor: #1c2233; intensity: 1.0"></a-entity>
+  <a-entity light="type: directional; intensity: 0.8" position="1.5 2.5 1"></a-entity>
+
+  <a-entity id="cam" camera orbit-cam position="0 1.6 0"></a-entity>
+  <a-entity laser-controls="hand: left" raycaster="objects: .clickable; far: 6"></a-entity>
+  <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 6"></a-entity>
+
+  <a-entity id="root" position="0 0 -2">
+    <a-entity id="viz" class="clickable" fas-viz position="0 1.2 0"></a-entity>
+
+    <a-entity id="hud" hud-controller position="0 0.62 1">
+      <a-text id="yearText" value="" align="center" position="0 0.17 0"
+              width="1.0" wrap-count="6" color="#ffffff"></a-text>
+      <a-plane id="track" width="1" height="0.014" color="#5a6478" position="0 0 0"></a-plane>
+      <a-plane id="dragPlane" width="2.4" height="0.8" position="0 0 0.001"
+               material="opacity: 0; transparent: true"></a-plane>
+      <a-box id="handle" width="0.035" height="0.06" depth="0.024" color="#f2f4f8"
+             position="0 0 0.012"></a-box>
+      <a-text value="2004" align="center" position="-0.5 -0.06 0" width="0.5" wrap-count="12" color="#8b93a7"></a-text>
+      <a-text value="2024" align="center" position="0.5 -0.06 0" width="0.5" wrap-count="12" color="#8b93a7"></a-text>
+      <a-plane id="playBtn" class="clickable" width="0.24" height="0.085" color="#2b3550"
+               position="-0.72 0 0"></a-plane>
+      <a-text id="playText" value="PLAY" align="center" position="-0.72 0 0.005"
+              width="0.5" wrap-count="14" color="#ffffff"></a-text>
+      <a-plane id="modeBtn" class="clickable" width="0.6" height="0.085" color="#2b3550"
+               position="0.92 0 0"></a-plane>
+      <a-text id="modeText" value="MODE: ACCESS POINTS" align="center" position="0.92 0 0.005"
+              width="0.72" wrap-count="26" color="#ffffff"></a-text>
+      <a-text value="IMF Financial Access Survey — a missing spike means not reported, never zero"
+              align="center" position="0 -0.13 0" width="1.5" wrap-count="110" color="#7b8296"></a-text>
+    </a-entity>
+
+    <a-entity id="cube" cube-viz position="1.5 0 -0.5"></a-entity>
+  </a-entity>
+</a-scene>
+
+</body>
+</html>

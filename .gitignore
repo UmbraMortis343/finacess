@@ -1,2 +1,6 @@
 .DS_Store
 node_modules/
+fas-atms.csv
+fas-branches.csv
+fas-mm-accounts.csv
+fas-mm-agents.csv
