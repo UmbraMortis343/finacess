@@ -152,6 +152,7 @@ var COL_ATM = '#2e5da6', COL_BR = '#8ec1ea'; // physical stack: dark = ATMs, lig
 var COL_MM = '#ff8c42', COL_GLYPH = '#ffd24a', COL_DOT = '#9aa0ab';
 var EARTH_URL = 'https://cdn.jsdelivr.net/npm/three-globe@2/example/img/earth-blue-marble.jpg';
 var DEBUG_FLAT = /[?&]debug\b/.test(location.search);
+var DIAG = /[?&]diag\b/.test(location.search);
 var PERIMETER_MSG = 'Reporting perimeter change — not organic growth.';
 
 function llToV3(lat, lon, r) {
@@ -807,6 +808,16 @@ AFRAME.registerComponent('hud-controller', {
     var holding = !!APP.grabbedBy;
     setAttr('placeText', 'value', holding ? 'HOLDING' : (APP.placing ? 'POINT AT FLOOR' : 'MOVE GLOBE'));
     setAttr('placeText', 'color', (holding || APP.placing) ? '#ffd867' : '#ffffff');
+    if (DIAG) this.diag();
+  },
+
+  // ?diag prints the rig pose and how many times something external moved it.
+  diag: function () {
+    var rl = APP.rigLock;
+    if (!rl) return;
+    var p = rl.el.object3D.position;
+    setAttr('hudDiag', 'value', 'rig ' + p.x.toFixed(2) + ' ' + p.y.toFixed(2) + ' ' + p.z.toFixed(2) +
+      '   overwritten ' + rl.corrections + 'x');
   },
   tick: function (time, dt) {
     var cam = this.el.sceneEl.camera;
@@ -846,6 +857,10 @@ AFRAME.registerComponent('hud-controller', {
       this.el.parentEl.object3D.worldToLocal(this._v3);
       this.el.object3D.position.lerp(this._v3, 0.18);
       this.el.object3D.lookAt(this._v1); // camera-facing billboard
+    }
+    if (DIAG) {
+      this.diagAcc = (this.diagAcc || 0) + (dt || 0);
+      if (this.diagAcc > 250) { this.diagAcc = 0; this.diag(); }
     }
     if (APP.playing && dt) {
       this.acc += Math.min(dt, 250); // a long stall must not queue a burst of steps
@@ -1143,6 +1158,24 @@ AFRAME.registerComponent('cube-viz', {
   }
 });
 
+AFRAME.registerComponent('rig-lock', {
+  init: function () {
+    this.want = new THREE.Vector3().copy(this.el.object3D.position);
+    this.corrections = 0;
+    APP.rigLock = this;
+  },
+  // Adopt wherever the rig currently is as the new intended pose.
+  sync: function () { this.want.copy(this.el.object3D.position); },
+  tick: function () {
+    var p = this.el.object3D.position;
+    if (APP.grabbedBy) { this.want.copy(p); return; } // the grab is authoritative
+    if (p.x !== this.want.x || p.y !== this.want.y || p.z !== this.want.z) {
+      this.corrections++; // something external moved it; put it back
+      p.copy(this.want);
+    }
+  }
+});
+
 // Quest controller bindings. laser-controls already turns the trigger into
 // cursor clicks; this adds thumbsticks (globe spin, year) and face buttons.
 AFRAME.registerComponent('xr-input', {
@@ -1197,6 +1230,7 @@ AFRAME.registerComponent('xr-input', {
     if (!this.grabbing) return;
     this.grabbing = false;
     if (APP.grabbedBy === this.data.hand) APP.grabbedBy = null;
+    if (APP.rigLock) APP.rigLock.sync(); // hold it exactly where it was let go
     if (APP.hud) APP.hud.refresh();
   },
 
@@ -1563,6 +1597,7 @@ AFRAME.registerComponent('app-config', {
       // #root is a direct child of the scene so local space is world space.
       var root = document.getElementById('root');
       if (root && e.detail && e.detail.position) root.object3D.position.copy(e.detail.position);
+      if (APP.rigLock) APP.rigLock.sync(); // this is now the pose to hold
       APP.placing = false;
       scene.setAttribute('ar-hit-test', 'enabled', false);
       if (APP.hud) APP.hud.refresh();
@@ -1633,11 +1668,12 @@ renderSelPanel();
   <!-- Hit-test target stand-in. It exists purely to absorb A-Frame's XR
        anchor binding, which otherwise pins #root and rewrites its transform
        every frame, undoing grab-placement. Also sizes the floor reticle. -->
-  <a-entity id="placeProbe" visible="false">
-    <a-box width="1" height="0.02" depth="1"></a-box>
+  <a-entity id="placeProbe">
+    <!-- invisible on the CHILD: ar-hit-test forces the target itself visible -->
+    <a-box width="1" height="0.02" depth="1" visible="false"></a-box>
   </a-entity>
 
-  <a-entity id="root" position="0 0 -2">
+  <a-entity id="root" rig-lock position="0 0 -2">
     <a-entity id="viz" class="clickable" fas-viz position="0 1.2 0"></a-entity>
 
     <a-entity id="hud" hud-controller position="0 0.62 1">
@@ -1686,6 +1722,9 @@ renderSelPanel();
               width="0.75" wrap-count="24" color="#ffffff"></a-text>
       <a-text value="IMF Financial Access Survey — a missing spike means not reported, never zero"
               align="center" position="0.72 -0.33 0" width="1.1" wrap-count="100" color="#7b8296"></a-text>
+
+      <a-text id="hudDiag" value="" align="center" position="0 -0.44 0"
+              width="1.2" wrap-count="70" color="#ffd867"></a-text>
 
       <!-- in-scene controls panel (the only help visible inside the headset) -->
       <a-entity id="hudHelp" position="-1.8 0.45 0" visible="false">
