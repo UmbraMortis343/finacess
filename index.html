@@ -559,7 +559,9 @@ AFRAME.registerComponent('fas-viz', {
     var fallback = new THREE.CanvasTexture(graticuleCanvas());
     fallback.colorSpace = THREE.SRGBColorSpace;
     this.globeMat = new THREE.MeshLambertMaterial({ map: fallback });
-    group.add(new THREE.Mesh(new THREE.SphereGeometry(GLOBE_R, 64, 48), this.globeMat));
+    var globeMesh = new THREE.Mesh(new THREE.SphereGeometry(GLOBE_R, 64, 48), this.globeMat);
+    globeMesh.raycast = function () {}; // not a pick target: skip ~6k triangles per ray
+    group.add(globeMesh);
     var self = this;
     new THREE.TextureLoader().load(EARTH_URL, function (tex) {
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -606,10 +608,15 @@ AFRAME.registerComponent('fas-viz', {
     this.mDots.count = this.dotMap.length;
     this.mDots.instanceMatrix.needsUpdate = true;
 
+    this.mRing.raycast = function () {}; // decoration only, never picked
     var meshes = [this.mPhysA, this.mPhysB, this.mMM, this.mRing, this.mGlyph, this.mDots];
     meshes.forEach(function (m) {
       m.frustumCulled = false;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      // Fixed sphere covering globe + tallest spike. Set explicitly so three
+      // never recomputes it per pick, and so it cannot go stale as heights
+      // change: a ray that misses it skips all 192 instances outright.
+      m.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 0.95);
       group.add(m);
     });
 
@@ -1157,9 +1164,20 @@ AFRAME.registerComponent('xr-input', {
     // real thing rather than a reticle. Release to leave it there.
     el.addEventListener('gripdown', function () { self.grab(); });
     el.addEventListener('gripup', function () { self.release(); });
+    // A missed gripup would leave the scene welded to this hand: the HUD
+    // rides along, so no button can be aimed at and the app reads as frozen.
+    // Release on every signal that the hold ended.
+    el.addEventListener('gripchanged', function (e) {
+      var d = (e && e.detail) || {};
+      var st = d.state || d;
+      if (st && st.pressed === false) self.release();
+    });
+    el.addEventListener('controllerdisconnected', function () { self.release(); });
+    el.sceneEl.addEventListener('exit-vr', function () { self.release(); });
   },
 
   grab: function () {
+    if (APP.grabbedBy && APP.grabbedBy !== this.data.hand) return; // one hand at a time
     var viz = document.getElementById('viz');
     if (!viz || !document.getElementById('root')) return;
     this.grabbing = true;
@@ -1206,7 +1224,7 @@ AFRAME.registerComponent('xr-input', {
     }
     APP.spinInputs[this.data.hand] = Math.abs(this.axisX) > 0.25 ? this.axisX : 0;
     APP.spin = (APP.spinInputs.left || 0) + (APP.spinInputs.right || 0);
-    if (!APP.grabbedBy && this.data.hand === 'right' &&
+    if (this.data.hand === 'right' && APP.grabbedBy !== 'right' &&
         Math.abs(this.axisY) > 0.6 && time - this.lastStep > 220) {
       this.lastStep = time;
       APP.setYear(APP.year + (this.axisY < 0 ? 1 : -1)); // stick up = forward in time
@@ -1599,8 +1617,12 @@ renderSelPanel();
   <a-entity light="type: directional; intensity: 0.8" position="1.5 2.5 1"></a-entity>
 
   <a-entity id="cam" camera orbit-cam position="0 1.6 0"></a-entity>
-  <a-entity laser-controls="hand: left" raycaster="objects: .clickable; far: 6" xr-input="hand: left"></a-entity>
-  <a-entity laser-controls="hand: right" raycaster="objects: .clickable; far: 6" xr-input="hand: right"></a-entity>
+  <!-- interval is critical: A-Frame defaults to raycasting every frame, which
+       means ~600 per-instance tests per hand per frame against the spikes. -->
+  <a-entity laser-controls="hand: left" xr-input="hand: left"
+            raycaster="objects: .clickable; far: 6; interval: 90"></a-entity>
+  <a-entity laser-controls="hand: right" xr-input="hand: right"
+            raycaster="objects: .clickable; far: 6; interval: 90"></a-entity>
 
   <a-entity id="root" position="0 0 -2">
     <a-entity id="viz" class="clickable" fas-viz position="0 1.2 0"></a-entity>
