@@ -110,7 +110,9 @@
     <tr><td>Right stick &uarr;/&darr;</td><td>change year</td></tr>
     <tr><td>A &middot; B</td><td>play / pause &middot; mode</td></tr>
     <tr><td>X &middot; Y</td><td>help panel &middot; compare cube</td></tr>
-    <tr><td>Grip / MOVE GLOBE</td><td>re-place the globe (MR)</td></tr>
+    <tr><td>Hold grip</td><td>globe snaps to your hand, release to place</td></tr>
+    <tr><td>Stick &uarr;/&darr; while held</td><td>push the globe away / pull it closer</td></tr>
+    <tr><td>MOVE GLOBE</td><td>drop it on the floor instead</td></tr>
     <tr><td>Walk</td><td>around the globe and cube</td></tr>
   </table>
 </div>
@@ -144,6 +146,8 @@ var FLOOR_PHYS = 10;        // adoption mode: per-country denominators are floor
 var FLOOR_ACC = 100;        // tiny absolute range (0.1→0.3) reads flat, not dramatic
 var BREAK_RATIO = 5;        // YoY change beyond 5x (either direction) = perimeter-change flag
 var BREAK_EPS = 1;          // ignore ratios computed off near-zero bases
+var CUBE_SCALE = 0.75;    // cube is a side reference, not a second centrepiece
+var CUBE_LEFT_EDGE = 1.9; // world X its left edge parks at, clear of the globe
 var COL_ATM = '#2e5da6', COL_BR = '#8ec1ea'; // physical stack: dark = ATMs, light = branches
 var COL_MM = '#ff8c42', COL_GLYPH = '#ffd24a', COL_DOT = '#9aa0ab';
 var EARTH_URL = 'https://cdn.jsdelivr.net/npm/three-globe@2/example/img/earth-blue-marble.jpg';
@@ -280,6 +284,7 @@ var menuOpen = false;
 var APP = window.APP = {
   year: Y1, mode: 'access', playing: false, viz: null, hud: null, cube: null, cam: null,
   sel: [], hover: null, limitHit: false, cubeOpen: false, helpOpen: false, placing: false,
+  grabbedBy: null, // hand currently holding the scene, or null
   spin: 0, spinInputs: {}, // globe rotation input, -1..1 (XR thumbsticks feed spinInputs)
   // Every button — HTML, in-scene HUD (flat raycast or XR laser), controller
   // face buttons — routes through here.
@@ -746,9 +751,10 @@ AFRAME.registerComponent('hud-controller', {
       'Right stick up/down: change year\n' +
       'A: play/pause    B: mode\n' +
       'X: this panel    Y: compare cube\n' +
-      'Grip or MOVE GLOBE: re-place it\n' +
-      'MR: point at your floor and pull the\n' +
-      'trigger to drop the globe there.\n' +
+      'Hold GRIP: globe snaps to your hand\n' +
+      '  stick up/down = push away / pull in\n' +
+      '  release to leave it there\n' +
+      'MOVE GLOBE: drop it on the floor\n' +
       'The cube sits to its right - walk over.');
     this.refresh();
   },
@@ -769,8 +775,9 @@ AFRAME.registerComponent('hud-controller', {
     document.getElementById('cmpBtn').setAttribute('color', can ? '#2b3550' : '#171d2e');
     var pt = document.getElementById('placeText');
     if (pt) {
-      pt.setAttribute('value', APP.placing ? 'POINT AT FLOOR' : 'MOVE GLOBE');
-      pt.setAttribute('color', APP.placing ? '#ffd867' : '#ffffff');
+      var holding = !!APP.grabbedBy;
+      pt.setAttribute('value', holding ? 'HOLDING' : (APP.placing ? 'POINT AT FLOOR' : 'MOVE GLOBE'));
+      pt.setAttribute('color', (holding || APP.placing) ? '#ffd867' : '#ffffff');
     }
   },
   tick: function (time, dt) {
@@ -847,7 +854,7 @@ AFRAME.registerComponent('cube-viz', {
     if (!this.built) return;
     this.el.removeObject3D('cube');
     if (this.links) { this.el.parentEl.removeObject3D('links'); this.links = null; }
-    this.el.object3D.scale.set(1, 1, 1);
+    this.el.object3D.scale.setScalar(CUBE_SCALE);
     var drop = function (l) { if (l.parentNode) l.parentNode.removeChild(l); };
     this.labels.forEach(drop);
     this.still.forEach(drop);
@@ -885,6 +892,7 @@ AFRAME.registerComponent('cube-viz', {
     var mode = APP.mode, N = APP.sel.length;
     if (N < 2) return;
     if (animate) { this.anim = 0; this.el.object3D.scale.set(0.001, 0.001, 0.001); }
+    else this.el.object3D.scale.setScalar(CUBE_SCALE);
     var self = this;
     var group = new THREE.Group();
     // Two lanes per column, side by side in the same plane: physical left, mm right.
@@ -984,7 +992,7 @@ AFRAME.registerComponent('cube-viz', {
     var gl = [], xa = x0 - 0.35, xb = x0 + (N - 1) * SP + 0.35;
     // Slide the whole cube right so its left edge always clears the globe's
     // spike envelope (0.5 radius + 0.35 spikes), whatever the column count.
-    this.el.object3D.position.x = 1.75 - xa;
+    this.el.object3D.position.x = CUBE_LEFT_EDGE - xa * CUBE_SCALE;
     [2004, 2010, 2015, 2020, 2024].forEach(function (yr) {
       var y = yOf(yr - Y0);
       gl.push(xa, y, 0, xb, y, 0);
@@ -1061,7 +1069,7 @@ AFRAME.registerComponent('cube-viz', {
     if (!this.built) return;
     if (this.anim < 1 && dt) { // ease-out scale from the floor
       this.anim = Math.min(1, this.anim + dt / 400);
-      var s = 1 - Math.pow(1 - this.anim, 3);
+      var s = (1 - Math.pow(1 - this.anim, 3)) * CUBE_SCALE;
       this.el.object3D.scale.set(s, s, s);
     }
     var cam = this.el.sceneEl.camera;
@@ -1099,20 +1107,68 @@ AFRAME.registerComponent('xr-input', {
   init: function () {
     var self = this, el = this.el;
     this.axisX = 0; this.axisY = 0; this.lastStep = 0;
+    this.grabbing = false;
+    this.holdDist = 1;
+    this._p = new THREE.Vector3(); this._o = new THREE.Vector3();
+    this._f = new THREE.Vector3(); this._t = new THREE.Vector3();
     el.addEventListener('thumbstickmoved', function (e) { self.axisX = e.detail.x; self.axisY = e.detail.y; });
     el.addEventListener('abuttondown', function () { APP.doAction('play'); });
     el.addEventListener('bbuttondown', function () { APP.doAction('mode'); });
     el.addEventListener('xbuttondown', function () { APP.doAction('help'); });
     el.addEventListener('ybuttondown', function () { APP.doAction('compare'); });
-    el.addEventListener('gripdown', function () { // MR: allow re-placing the globe
-      var scene = el.sceneEl;
-      if (scene.is('ar-mode') && scene.hasAttribute('ar-hit-test')) scene.setAttribute('ar-hit-test', 'enabled', true);
-    });
+    // Hold grip to grab: the globe snaps in front of this controller and
+    // rides it, fully rendered the whole time, so you aim by watching the
+    // real thing rather than a reticle. Release to leave it there.
+    el.addEventListener('gripdown', function () { self.grab(); });
+    el.addEventListener('gripup', function () { self.release(); });
   },
-  tick: function (time) {
+
+  grab: function () {
+    var viz = document.getElementById('viz');
+    if (!viz || !document.getElementById('root')) return;
+    this.grabbing = true;
+    APP.grabbedBy = this.data.hand;
+    // Snap to the controller's aim but keep the globe's current depth, so it
+    // comes to hand without leaping toward or away from you.
+    viz.object3D.getWorldPosition(this._p);
+    this.el.object3D.getWorldPosition(this._o);
+    this.holdDist = Math.min(3, Math.max(0.4, this._p.distanceTo(this._o)));
+    var scene = this.el.sceneEl;
+    if (scene.hasAttribute('ar-hit-test')) scene.setAttribute('ar-hit-test', 'enabled', false);
+    APP.placing = false;
+    if (APP.hud) APP.hud.refresh();
+  },
+
+  release: function () {
+    if (!this.grabbing) return;
+    this.grabbing = false;
+    if (APP.grabbedBy === this.data.hand) APP.grabbedBy = null;
+    if (APP.hud) APP.hud.refresh();
+  },
+
+  tick: function (time, dt) {
+    if (this.grabbing && APP.grabbedBy === this.data.hand) {
+      // Stick up pushes it away, stick down pulls it back toward the hand.
+      if (dt && Math.abs(this.axisY) > 0.15) {
+        this.holdDist = Math.min(3, Math.max(0.4, this.holdDist - this.axisY * 1.3 * dt / 1000));
+      }
+      var root = document.getElementById('root').object3D;
+      var viz = document.getElementById('viz').object3D;
+      var c = this.el.object3D;
+      c.getWorldPosition(this._o); // also refreshes matrixWorld
+      var e = c.matrixWorld.elements;
+      this._f.set(-e[8], -e[9], -e[10]).normalize(); // controller forward (-Z)
+      this._t.copy(this._o).addScaledVector(this._f, this.holdDist);
+      viz.getWorldPosition(this._p);
+      root.position.add(this._t.sub(this._p)); // shift the whole rig by the delta
+      APP.spinInputs[this.data.hand] = 0; // this stick is driving distance
+      APP.spin = (APP.spinInputs.left || 0) + (APP.spinInputs.right || 0);
+      return;
+    }
     APP.spinInputs[this.data.hand] = Math.abs(this.axisX) > 0.25 ? this.axisX : 0;
     APP.spin = (APP.spinInputs.left || 0) + (APP.spinInputs.right || 0);
-    if (this.data.hand === 'right' && Math.abs(this.axisY) > 0.6 && time - this.lastStep > 220) {
+    if (!APP.grabbedBy && this.data.hand === 'right' &&
+        Math.abs(this.axisY) > 0.6 && time - this.lastStep > 220) {
       this.lastStep = time;
       APP.setYear(APP.year + (this.axisY < 0 ? 1 : -1)); // stick up = forward in time
     }
@@ -1207,7 +1263,7 @@ AFRAME.registerComponent('orbit-cam', {
   },
 
   focusCube: function () {
-    this.yaw = 0; this.pitch = 0.05; this.dist = 3.1;
+    this.yaw = 0; this.pitch = 0.05; this.dist = 2.5;
     if (APP.cube && APP.cube.el) {
       APP.cube.el.object3D.getWorldPosition(this.target); // cube X is dynamic
       this.target.y = 1.1;
