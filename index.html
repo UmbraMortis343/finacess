@@ -1558,14 +1558,20 @@ AFRAME.registerComponent('app-config', {
     // MR placement: the first trigger press drops the scene on your floor,
     // then placement locks so later trigger pulls select countries instead of
     // dragging the room around. MOVE GLOBE (HUD) or grip re-arms it.
-    scene.addEventListener('ar-hit-test-select', function () {
+    scene.addEventListener('ar-hit-test-select', function (e) {
+      // We move the rig ourselves: the event carries the floor point, and
+      // #root is a direct child of the scene so local space is world space.
+      var root = document.getElementById('root');
+      if (root && e.detail && e.detail.position) root.object3D.position.copy(e.detail.position);
       APP.placing = false;
       scene.setAttribute('ar-hit-test', 'enabled', false);
       if (APP.hud) APP.hud.refresh();
     });
     scene.addEventListener('enter-vr', function () {
       APP.toggleHelp(true);
-      if (scene.is('ar-mode')) APP.armPlacement();
+      // Deliberately NOT arming placement here: the globe is already in
+      // front of you, and arming made the first trigger pull reposition the
+      // room instead of selecting a country. Use grip or MOVE GLOBE.
     });
     scene.addEventListener('exit-vr', function () { APP.toggleHelp(false); });
   }
@@ -1608,7 +1614,7 @@ renderSelPanel();
 <a-scene background="color: #0d1020"
          renderer="antialias: true; colorManagement: true"
          webxr="optionalFeatures: hit-test, local-floor"
-         ar-hit-test="target: #root"
+         ar-hit-test="target: #placeProbe; enabled: false"
          vr-mode-ui="enabled: false"
          device-orientation-permission-ui="enabled: false"
          app-config pointer-input>
@@ -1623,6 +1629,13 @@ renderSelPanel();
             raycaster="objects: .clickable; far: 6; interval: 90"></a-entity>
   <a-entity laser-controls="hand: right" xr-input="hand: right"
             raycaster="objects: .clickable; far: 6; interval: 90"></a-entity>
+
+  <!-- Hit-test target stand-in. It exists purely to absorb A-Frame's XR
+       anchor binding, which otherwise pins #root and rewrites its transform
+       every frame, undoing grab-placement. Also sizes the floor reticle. -->
+  <a-entity id="placeProbe" visible="false">
+    <a-box width="1" height="0.02" depth="1"></a-box>
+  </a-entity>
 
   <a-entity id="root" position="0 0 -2">
     <a-entity id="viz" class="clickable" fas-viz position="0 1.2 0"></a-entity>
